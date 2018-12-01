@@ -1,36 +1,24 @@
 /*
- * Copyright (C) 2014 The Android Open Source Project
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Copyright (C) Atte.
  */
 
-package com.atte.testapp;
+package se.atte.circularreveal;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
-import android.app.Activity;
-import android.app.Fragment;
-import android.app.FragmentManager;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.graphics.Outline;
 import android.graphics.Point;
 import android.os.Bundle;
+import android.support.annotation.ColorInt;
+import android.support.annotation.NonNull;
+import android.support.v4.app.Fragment;
+import android.support.v4.app.FragmentManager;
 import android.transition.Fade;
 import android.transition.Transition;
 import android.util.Log;
 import android.util.TypedValue;
-import android.view.Display;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewAnimationUtils;
@@ -63,7 +51,7 @@ public class CircularRevealFragment extends Fragment {
         return fragment != null ? (CircularRevealFragment) fragment : new CircularRevealFragment();
     }
 
-    public CircularRevealFragment setRevealColor(int color) {
+    public CircularRevealFragment setRevealColor(@ColorInt int color) {
         mRevealColor = color;
         return this;
     }
@@ -88,11 +76,9 @@ public class CircularRevealFragment extends Fragment {
         return this;
     }
 
-    public void startCircularReveal(int containerId, Activity activity) {
-        final FragmentManager fm = activity.getFragmentManager();
+    public void startCircularReveal(int containerId, @NonNull FragmentManager fm) {
         if (fm.findFragmentByTag(TAG) == null) {
             mContainerId = containerId;
-            mDuration = activity.getResources().getInteger(android.R.integer.config_mediumAnimTime);
             fm.beginTransaction().add(containerId, this, TAG).commitAllowingStateLoss();
         } else {
             Log.w(TAG, "An instance of CircularRevealFragment already exists");
@@ -100,11 +86,14 @@ public class CircularRevealFragment extends Fragment {
     }
 
     public static void endCircularReveal(int containerId, final FragmentManager fm,
-            Fragment transitToFragment) {
+                                         Fragment transitToFragment) {
         if (transitToFragment != null) {
             // Create enter transition to the entering fragment if necessary.
-            Transition transition = transitToFragment.getEnterTransition();
-            if (transition == null) {
+            Object transObject = transitToFragment.getEnterTransition();
+            Transition transition;
+            if (transObject instanceof Transition) {
+                transition = (Transition) transObject;
+            } else {
                 transition = new Fade();
                 transitToFragment.setEnterTransition(transition);
             }
@@ -148,12 +137,6 @@ public class CircularRevealFragment extends Fragment {
         }
     }
 
-    /**
-     * Empty constructor used only by the {@link FragmentManager}.
-     */
-    public CircularRevealFragment() {
-    }
-
     @Override
     public void onResume() {
         super.onResume();
@@ -165,19 +148,21 @@ public class CircularRevealFragment extends Fragment {
     }
 
     @Override
-    public View onCreateView(LayoutInflater inflater, ViewGroup container,
-            Bundle savedInstanceState) {
-        return inflater.inflate(R.layout.outgoing_call_animation, container, false);
+    public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container,
+                             Bundle savedInstanceState) {
+        View view = new View(container.getContext());
+        view.setLayoutParams(new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        return view;
     }
 
     public void startOutgoingAnimation() {
-        final Activity activity = getActivity();
-        if (activity == null) {
+        final Context context = getContext();
+        final View view = getView();
+        if (context == null || view == null || isDetached()) {
             Log.w(TAG, "Asked to do outgoing call animation when not attached");
             return;
         }
-
-        final View view = activity.getWindow().getDecorView();
 
         // The circle starts from an initial size of 0 so clip it such that it
         // is invisible.
@@ -197,9 +182,8 @@ public class CircularRevealFragment extends Fragment {
         });
         view.setClipToOutline(true);
 
-        view.findViewById(R.id.outgoing_call_animation_circle)
-                .setBackgroundColor(mRevealColor != 0 ? mRevealColor :
-                        getThemeColor(activity, android.R.attr.colorPrimary));
+        view.setBackgroundColor(mRevealColor != 0 ?
+                mRevealColor : getThemeColor(context, android.R.attr.colorPrimary));
 
         view.getViewTreeObserver().addOnPreDrawListener(new OnPreDrawListener() {
             @Override
@@ -208,7 +192,7 @@ public class CircularRevealFragment extends Fragment {
                 if (vto.isAlive()) {
                     vto.removeOnPreDrawListener(this);
                 }
-                final Animator animator = getRevealAnimator(mTouchPoint, mDuration);
+                final Animator animator = getRevealAnimator(view, mTouchPoint, mDuration);
                 animator.addListener(new AnimatorListenerAdapter() {
                     @Override
                     public void onAnimationEnd(Animator animation) {
@@ -225,22 +209,24 @@ public class CircularRevealFragment extends Fragment {
         });
     }
 
-    private Animator getRevealAnimator(Point touchPoint, int duration) {
-        final Activity activity = getActivity();
-        final View view = activity.getWindow().getDecorView();
-        final Display display = activity.getWindowManager().getDefaultDisplay();
-        final Point size = new Point();
-        display.getSize(size);
-
-        int startX = size.x / 2;
-        int startY = size.y / 2;
+    private Animator getRevealAnimator(View view, Point touchPoint, int duration) {
+        int width = view.getMeasuredWidth();
+        int height = view.getMeasuredHeight();
+        int startX;
+        int startY;
         if (touchPoint != null) {
-            startX = touchPoint.x;
-            startY = touchPoint.y;
+            int[] rect = new int[2];
+            view.getLocationOnScreen(rect);
+            // touch is global location, compensate view' location
+            startX = touchPoint.x - rect[0];
+            startY = touchPoint.y - rect[1];
+        } else {
+            startX = width / 2;
+            startY = height / 2;
         }
 
-        final Animator valueAnimator = ViewAnimationUtils.createCircularReveal(view, startX, startY,
-                0, Math.max(size.x, size.y));
+        final Animator valueAnimator = ViewAnimationUtils.createCircularReveal(
+                view, startX, startY, 0, Math.max(width, height));
         valueAnimator.setDuration(duration);
         return valueAnimator;
     }

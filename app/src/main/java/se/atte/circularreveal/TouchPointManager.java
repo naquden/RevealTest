@@ -14,19 +14,16 @@
  * limitations under the License.
  */
 
-package com.atte.testapp;
+package se.atte.circularreveal;
 
 import android.graphics.Point;
 
 /**
  * Singleton class to keep track of where the user last touched the screen.
- *
- * Used to pass on to the InCallUI for animation.
  */
 public class TouchPointManager {
-    public static final String TOUCH_POINT = "touchPoint";
 
-    private static TouchPointManager sInstance = new TouchPointManager();
+    private static TouchPointManager sInstance;
 
     private Point mPoint = new Point();
 
@@ -37,6 +34,9 @@ public class TouchPointManager {
     }
 
     public static TouchPointManager getInstance() {
+        if (sInstance == null) {
+            sInstance = new TouchPointManager();
+        }
         return sInstance;
     }
 
